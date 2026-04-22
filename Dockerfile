@@ -29,19 +29,17 @@ ARG FUTU_OPEND_RS_VER=1.4.62
 RUN apt-get update && \
     apt-get install --no-install-recommends -y ca-certificates curl libdbus-1-3 && \
     rm -rf /var/lib/apt/lists/* && \
-    groupadd --system --gid 10001 futu && \
-    useradd --system --uid 10001 --gid futu --home-dir /home/futu --create-home --shell /usr/sbin/nologin futu && \
-    install -d -o futu -g futu -m 0750 /etc/futu-opend /var/lib/futu /var/log/futu
+    install -d -m 0755 /etc/futu-opend /var/lib/futu /var/log/futu
 
 COPY --from=build /tmp/futu-opend-rs-${FUTU_OPEND_RS_VER}/futu-opend /usr/local/bin/futu-opend
 COPY --from=build /tmp/futu-opend-rs-${FUTU_OPEND_RS_VER}/futu-mcp /usr/local/bin/futu-mcp
 COPY --from=build /tmp/futu-opend-rs-${FUTU_OPEND_RS_VER}/futucli /usr/local/bin/futucli
 COPY --chmod=0755 script/entrypoint-opend.sh /usr/local/bin/entrypoint-opend.sh
 COPY --chmod=0755 script/entrypoint-mcp.sh /usr/local/bin/entrypoint-mcp.sh
+COPY --chmod=0755 script/entrypoint-all.sh /usr/local/bin/entrypoint-all.sh
 
 RUN chmod 0755 /usr/local/bin/futu-opend /usr/local/bin/futu-mcp /usr/local/bin/futucli
 
-USER futu:futu
-WORKDIR /home/futu
+WORKDIR /root
 
-ENTRYPOINT ["/usr/local/bin/entrypoint-opend.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint-all.sh"]

@@ -14,7 +14,7 @@ with mounted examples and nanobot integration assets.
 ```text
 .
 ├── Dockerfile              # Multi-stage build for futu-opend-rs binaries
-├── docker-compose.yaml     # Local opend + MCP stack
+├── docker-compose.yaml     # Local single-container stack
 ├── examples/               # Example TOML config and key material
 ├── skills/
 │   └── moomooapi/          # Compliant market/trading skill package
@@ -29,10 +29,11 @@ with mounted examples and nanobot integration assets.
 
 - Adjust image build: `Dockerfile`
   Notes: `FUTU_OPEND_RS_VER`, multi-arch download
-- Modify startup: `script/entrypoint-opend.sh`
-  Notes: starts `futu-opend` from TOML config
-- Start MCP service: `script/entrypoint-mcp.sh`
-  Notes: starts `futu-mcp` from TOML config
+- Modify startup: `script/entrypoint-all.sh`
+  Notes: starts `futu-opend`, waits for health, then starts `futu-mcp`
+- Single-process entrypoints: `script/entrypoint-opend.sh`,
+  `script/entrypoint-mcp.sh`
+  Notes: retained as focused launchers for individual services
 - Compose examples: `docker-compose.yaml`, `examples/*.toml`
   Notes: local stack and mounted config
 - Skill package: `skills/moomooapi/SKILL.md`
@@ -46,7 +47,8 @@ with mounted examples and nanobot integration assets.
 
 - **Multi-stage Docker**: Builder downloads release tarball, final image
   installs only runtime deps
-- **Non-root user**: All images run as `futu` user (created at build)
+- **Default root runtime**: Images run as the container default root user
+  to avoid bind-mount permission failures on host directories
 - **Compose-mounted config**: Runtime config comes from
   `examples/*.toml` and `examples/keys.json`
 - **Local-only workflow**: this repo is intended for local build and
@@ -54,17 +56,20 @@ with mounted examples and nanobot integration assets.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
-- **NEVER** run containers as root — `USER futu` enforced
 - **NEVER** hardcode secrets — mount config and key files instead
 - **NEVER** commit real key material or account credentials
-- **NEVER** remove the health dependency between `mcp` and `opend`
-  without replacing readiness checks
+- **NEVER** remove the OpenD readiness gate before starting `mcp`
+  inside the combined entrypoint without replacing it with an equivalent
+  readiness check
 
 ## UNIQUE STYLES
 
 - **Config-first runtime**: TOML files are mounted into `/etc/futu-opend`
-- **Healthcheck**: Compose probes `http://127.0.0.1:22222/health`
-  before starting `mcp`
+- **Combined default startup**: the image default entrypoint starts
+  `futu-opend` first, then starts `futu-mcp` after the health endpoint is
+  ready
+- **Healthcheck**: Compose probes `http://127.0.0.1:22222/health` on the
+  single combined container
 - **Shared logs/state**: Named volumes back `/var/lib/futu` and `/var/log/futu`
 
 ## COMMANDS
@@ -80,7 +85,7 @@ docker compose config
 docker compose up -d
 
 # Inspect logs
-docker compose logs --no-color opend mcp
+docker compose logs --no-color opend
 ```
 
 ## NOTES

@@ -7,7 +7,7 @@ assets.
 ## What this repo provides
 
 - one native Docker image that bundles `futu-opend`, `futu-mcp`, and `futucli`
-- one compose stack with separate `opend` and `mcp` services
+- one default single-container runtime that starts `opend` and `mcp` together
 - a `toml`-first runtime configuration workflow under `examples/`
 - repo-local nanobot MCP templates and the compliant skill package under `skills/`
 
@@ -29,8 +29,8 @@ the legacy desktop OpenD distribution.
   - native TCP on `11111`
   - REST and health endpoints on `22222`
   - gRPC on `33333`
-- `mcp` runs `futu-mcp` separately and connects to `opend:11111`
-- both services mount repo-local config files from `examples/`
+- `mcp` runs in the same container and serves HTTP MCP on `38765`
+- the container mounts repo-local config files from `examples/`
 - persistent runtime state and logs live in the named volumes
   `futu-state` and `futu-log`
 
@@ -50,10 +50,10 @@ The MCP service is published on `38765` and serves HTTP MCP requests at `/mcp`.
 1. Point your MCP client at `http://<host>:38765/mcp` and send the
    plaintext token in `Authorization: Bearer <token>`.
 
-The compose stack defaults `FUTU_MCP_API_KEY` to `fc_replace_me` for the
-local MCP bearer token. Keep that plaintext token aligned with the
-matching `sha256:` entry in `examples/keys.json`, or override it with a
-different local environment value when you launch compose.
+The default startup path uses `FUTU_MCP_API_KEY` for the local MCP bearer
+token. Keep that plaintext token aligned with the matching `sha256:`
+entry in `examples/keys.json`, or override it with a different local
+environment value when you launch the container.
 
 ## Configuration workflow
 
@@ -74,7 +74,7 @@ Mounted in compose as `/etc/futu-opend/futu-opend.toml`.
 
 ### `examples/futu-mcp.toml`
 
-Configuration for the standalone MCP service.
+Configuration for the MCP service running in the same container.
 
 - upstream gateway target, defaulting to `opend:11111`
 - `keys.json` path for MCP auth and capability mapping
@@ -95,33 +95,40 @@ Compose mounts the file into both containers. The active auth check is
 part of the MCP service flow, and the current `opend` entrypoint also
 expects `/etc/futu-opend/keys.json` to exist before startup.
 
-## Compose usage
+## Runtime usage
 
-Start or rebuild the local bundle:
+Start or rebuild the local bundle with both OpenD and MCP in one
+container:
 
 ```bash
 docker compose up -d --build
 ```
 
-If you want OpenD to reuse a fixed device ID, set
-`FUTU_OPEND_DEVICE_ID` when you launch the container. This is optional;
-leave it unset to keep the current default startup behavior. The
-entrypoint maps it to `--device-id`.
-
-For a direct `docker run` flow:
+For a direct `docker run` flow, mount both TOML files plus `keys.json`:
 
 ```bash
 docker run --rm \
+  -e FUTU_MCP_API_KEY=fc_replace_me \
   -e FUTU_OPEND_DEVICE_ID=your-stable-device-id \
   -v "$PWD/examples/futu-opend.toml:/etc/futu-opend/futu-opend.toml:ro" \
+  -v "$PWD/examples/futu-mcp.toml:/etc/futu-opend/futu-mcp.toml:ro" \
   -v "$PWD/examples/keys.json:/etc/futu-opend/keys.json:ro" \
   -p 11111:11111 \
   -p 22222:22222 \
   -p 33333:33333 \
+  -p 38765:38765 \
   futu-opend-rs:local
 ```
 
-For Compose, add an optional environment entry under `opend`:
+This default startup path launches `futu-opend` first, waits for
+`http://127.0.0.1:22222/health`, then starts `futu-mcp`.
+
+If you want OpenD to reuse a fixed device ID, set
+`FUTU_OPEND_DEVICE_ID` when you launch the container. This is optional;
+the entrypoint maps it to `--device-id`.
+
+If you are using Compose, add an optional environment entry under
+`opend`:
 
 ```yaml
 services:
@@ -196,7 +203,7 @@ separate any simulated or live trading access into distinct keys.
 Important runtime and integration assets live here:
 
 - `Dockerfile` builds the native multi-arch `FUTU-OpenD-rs` image
-- `docker-compose.yaml` defines the local `opend` and `mcp` stack
+- `docker-compose.yaml` defines the local single-container stack
 - `examples/futu-opend.toml` is the gateway config template
 - `examples/futu-mcp.toml` is the MCP config template
 - `examples/keys.json` stores hashed MCP bearer-token entries and scopes
@@ -215,12 +222,17 @@ If you are migrating from an older checkout, update your workflow to use:
 
 - mounted `toml` config files under `examples/`
 - `examples/keys.json` for MCP auth
-- the two-service compose stack with `opend` and `mcp`
+- the default single-container startup for both `opend` and `mcp`
 
 If an older checkout mentions compatibility shims, generated config,
-interactive verification steps, injected key files, or env-only login
-startup, ignore that guidance and follow the file-mounted rs-native
-workflow here instead.
+interactive verification steps, injected key files, env-only login
+startup, or a separate default `opend` and `mcp` container topology,
+ignore that guidance and follow the file-mounted rs-native combined
+startup workflow here instead.
+
+The image runs as the container default root user so bind-mounted host
+directories stay writable without UID/GID mismatches from the old
+`futu` service account model.
 
 ## Disclaimer
 
