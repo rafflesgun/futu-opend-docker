@@ -14,8 +14,8 @@ Authorization: Bearer <plaintext MCP token>
 ```
 
 The checked-in example token is `fc_replace_me`, which matches the
-example hash in `examples/keys.json`. The local compose stack reads it
-from `examples/.env`, with `examples/.env.example` as the template.
+example hash in `examples/keys.json`. The local compose stack uses that
+same token by default unless you override `FUTU_MCP_API_KEY` locally.
 
 Use a key with `qot:read` and `acc:read` first. Keep
 `trade:simulate` separate from any real-trading workflow.

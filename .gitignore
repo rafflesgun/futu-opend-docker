@@ -3,3 +3,7 @@ super-linter-output
 report
 futu.pem
 examples/.env
+.env
+.futu-opend
+.worktrees
+.DS_Store

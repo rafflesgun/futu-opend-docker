@@ -40,21 +40,20 @@ The MCP service is published on `38765` and serves HTTP MCP requests at `/mcp`.
 
 1. Edit `examples/futu-opend.toml` with your account, region, and
    platform settings.
-2. Generate or rotate the plaintext bearer token you want MCP clients
+1. Generate or rotate the plaintext bearer token you want MCP clients
    to send, hash that token, and store the hash plus scopes in
    `examples/keys.json`. The checked-in example token is
    `fc_replace_me`.
-3. Copy `examples/.env.example` to `examples/.env` if you need to
-   recreate the default local bearer-token env file for compose.
-4. Adjust `examples/futu-mcp.toml` if you want to change the default
+1. Adjust `examples/futu-mcp.toml` if you want to change the default
    MCP HTTP listen address or audit log path.
-5. Run `docker compose up -d --build`.
-6. Point your MCP client at `http://<host>:38765/mcp` and send the
+1. Run `docker compose up -d --build`.
+1. Point your MCP client at `http://<host>:38765/mcp` and send the
    plaintext token in `Authorization: Bearer <token>`.
 
-The compose stack loads `examples/.env` for the local MCP bearer token.
-Keep that plaintext token aligned with the matching `sha256:` entry in
-`examples/keys.json`.
+The compose stack defaults `FUTU_MCP_API_KEY` to `fc_replace_me` for the
+local MCP bearer token. Keep that plaintext token aligned with the
+matching `sha256:` entry in `examples/keys.json`, or override it with a
+different local environment value when you launch compose.
 
 ## Configuration workflow
 
@@ -79,7 +78,7 @@ Configuration for the standalone MCP service.
 
 - upstream gateway target, defaulting to `opend:11111`
 - `keys.json` path for MCP auth and capability mapping
-- bearer token env supplied by compose from `examples/.env`
+- bearer token env supplied by compose, defaulting to `fc_replace_me`
 - HTTP listen address, defaulting to `:38765`
 - audit log path
 
@@ -155,7 +154,6 @@ Important runtime and integration assets live here:
 - `examples/futu-opend.toml` is the gateway config template
 - `examples/futu-mcp.toml` is the MCP config template
 - `examples/keys.json` stores hashed MCP bearer-token entries and scopes
-- `examples/.env.example` is the template for the local MCP bearer-token env file
 - `nanobot/README.md` documents nanobot MCP setup
 - `nanobot/mcp-http-example.json` contains a ready-to-edit MCP HTTP
   client example

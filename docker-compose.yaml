@@ -30,12 +30,12 @@ services:
     depends_on:
       opend:
         condition: service_healthy
+    environment:
+      FUTU_MCP_API_KEY: ${FUTU_MCP_API_KEY:-fc_replace_me}
     volumes:
       - ./examples/futu-mcp.toml:/etc/futu-opend/futu-mcp.toml:ro
       - ./examples/keys.json:/etc/futu-opend/keys.json:ro
       - futu-log:/var/log/futu
-    env_file:
-      - ./examples/.env
     ports:
       - "38765:38765"
     entrypoint: ["/usr/local/bin/entrypoint-mcp.sh"]
