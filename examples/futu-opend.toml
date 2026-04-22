@@ -1,0 +1,39 @@
+# Repo-local futu-opend config template derived from the upstream rs example.
+# Edit this file directly for local login and runtime settings.
+
+# Login account. Use either phone or email.
+# login_account = "your_account"
+
+# Use either the plaintext password or its MD5 hash.
+# login_pwd = "your_password"
+# login_pwd_md5 = "md5hash"
+
+# Login region: cn, hk, or us.
+# login_region = "hk"
+
+# Account platform: futunn or moomoo.
+# platform = "moomoo"
+
+# Listen address for the gateway service.
+ip = "0.0.0.0"
+
+# Native TCP gateway.
+port = 11111
+
+# HTTP REST health and API endpoint.
+rest_port = 22222
+
+# gRPC endpoint.
+grpc_port = 33333
+
+# Log verbosity: error, warn, info, debug, trace.
+log_level = "info"
+
+# Interface language: chs, cht, en.
+lang = "en"
+
+# Optional RSA private key path used by the gateway.
+# rsa_private_key = "/etc/futu-opend/rsa_key.pem"
+
+# Optional audit log path.
+# audit_log = "/var/log/futu/opend-audit.jsonl"

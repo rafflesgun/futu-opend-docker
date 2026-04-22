@@ -1,0 +1,10 @@
+# Repo-local futu-mcp config template derived from the upstream rs example.
+
+gateway = "opend:11111"
+keys_file = "/etc/futu-opend/keys.json"
+http_listen = ":38765"
+audit_log = "/var/log/futu/mcp-audit.jsonl"
+
+# Default compose flow uses keys_file-based auth.
+# Clients send a plaintext bearer token whose sha256 is stored in keys.json.
+# api_key = "fc_replace_me"

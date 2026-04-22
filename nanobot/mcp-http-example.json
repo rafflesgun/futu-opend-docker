@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "futu": {
+      "type": "http",
+      "url": "http://127.0.0.1:38765/mcp",
+      "headers": {
+        "Authorization": "Bearer fc_replace_me"
+      }
+    }
+  }
+}

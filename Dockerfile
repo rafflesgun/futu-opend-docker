@@ -1,110 +1,47 @@
 # syntax=docker/dockerfile:1
 
-ARG BASE_IMG=ubuntu
+ARG FUTU_OPEND_RS_VER=1.4.62
 
-FROM ubuntu:18.04 AS base-ubuntu
-FROM centos:centos7 AS base-centos
+FROM debian:bookworm-slim AS build
 
-FROM base-ubuntu AS build-ubuntu
-ARG FUTU_OPEND_VER=9.3.5308
+ARG TARGETARCH
+ARG FUTU_OPEND_RS_VER
 
-WORKDIR /tmp
 RUN apt-get update && \
-    apt-get install --no-install-recommends -y curl gnutls-bin
-COPY script/download_futu_opend.sh ./
-RUN chmod +x ./download_futu_opend.sh && \
-    ./download_futu_opend.sh Futu_OpenD_${FUTU_OPEND_VER}_Ubuntu18.04.tar.gz && \
-    tar -xzf Futu_OpenD_${FUTU_OPEND_VER}_Ubuntu18.04.tar.gz
-
-FROM base-centos AS build-centos
-ARG FUTU_OPEND_VER=9.3.5308
+    apt-get install --no-install-recommends -y ca-certificates curl tar && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /tmp
-COPY script/download_futu_opend.sh ./
-RUN chmod +x ./download_futu_opend.sh && \
-    ./download_futu_opend.sh Futu_OpenD_${FUTU_OPEND_VER}_Centos7.tar.gz && \
-    tar -xzf Futu_OpenD_${FUTU_OPEND_VER}_Centos7.tar.gz
 
-# copy futu opend to /bin
+RUN case "$TARGETARCH" in \
+      arm64) RS_ARCH="linux-aarch64" ;; \
+      amd64) RS_ARCH="linux-x86_64" ;; \
+      *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    FILE="futu-opend-rs-${FUTU_OPEND_RS_VER}-${RS_ARCH}.tar.gz" && \
+    curl -fL -o "$FILE" "https://futuapi.com/releases/rs-v${FUTU_OPEND_RS_VER}/$FILE" && \
+    tar -xzf "$FILE"
 
-FROM base-ubuntu AS final-ubuntu
-ARG FUTU_OPEND_VER=9.3.5308
+FROM debian:trixie-slim AS final
 
-COPY --from=build-ubuntu /tmp/Futu_OpenD_${FUTU_OPEND_VER}_Ubuntu18.04/Futu_OpenD_${FUTU_OPEND_VER}_Ubuntu18.04 /bin
+ARG FUTU_OPEND_RS_VER=1.4.62
 
-CMD ["/bin/start.sh"]
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y ca-certificates curl libdbus-1-3 && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd --system --gid 10001 futu && \
+    useradd --system --uid 10001 --gid futu --home-dir /home/futu --create-home --shell /usr/sbin/nologin futu && \
+    install -d -o futu -g futu -m 0750 /etc/futu-opend /var/lib/futu /var/log/futu
 
-FROM base-centos AS final-centos
-ARG FUTU_OPEND_VER=9.3.5308
+COPY --from=build /tmp/futu-opend-rs-${FUTU_OPEND_RS_VER}/futu-opend /usr/local/bin/futu-opend
+COPY --from=build /tmp/futu-opend-rs-${FUTU_OPEND_RS_VER}/futu-mcp /usr/local/bin/futu-mcp
+COPY --from=build /tmp/futu-opend-rs-${FUTU_OPEND_RS_VER}/futucli /usr/local/bin/futucli
+COPY --chmod=0755 script/entrypoint-opend.sh /usr/local/bin/entrypoint-opend.sh
+COPY --chmod=0755 script/entrypoint-mcp.sh /usr/local/bin/entrypoint-mcp.sh
 
-COPY --from=build-centos /tmp/Futu_OpenD_${FUTU_OPEND_VER}_Centos7/Futu_OpenD_${FUTU_OPEND_VER}_Centos7 /bin
+RUN chmod 0755 /usr/local/bin/futu-opend /usr/local/bin/futu-mcp /usr/local/bin/futucli
 
-# ------------------------------------------------------------
-# Ubuntu final image
-FROM final-ubuntu AS final-ubuntu-image
+USER futu:futu
+WORKDIR /home/futu
 
-ENV FUTU_ACCOUNT_ID=
-ENV FUTU_ACCOUNT_PWD=
-ENV FUTU_ACCOUNT_PWD_MD5=
-ENV FUTU_OPEND_RSA_FILE_PATH=/.futu/futu.pem
-ENV FUTU_OPEND_IP=127.0.0.1
-ENV FUTU_OPEND_PORT=11111
-ENV FUTU_OPEND_TELNET_PORT=22222
-
-# Create non-root user and necessary directories
-RUN groupadd -r futu && useradd -r -g futu -m -d /home/futu futu && \
-    mkdir -p /.futu /bin && chown -R futu:futu /.futu /bin /home/futu
-
-COPY script/start.sh /bin/start.sh
-RUN chmod +x /bin/start.sh && chown futu:futu /bin/start.sh
-
-COPY FutuOpenD.xml /bin/FutuOpenD.xml
-RUN chown futu:futu /bin/FutuOpenD.xml
-
-# Switch to non-root user
-USER futu
-
-# Add healthcheck
-HEALTHCHECK --interval=30s --timeout=600s --start-period=180s --retries=3 \
-  CMD pgrep FutuOpenD || exit 1
-
-CMD ["/bin/start.sh"]
-
-# ------------------------------------------------------------
-# CentOS final image
-FROM final-centos AS final-centos-image
-
-ENV FUTU_ACCOUNT_ID=
-ENV FUTU_ACCOUNT_PWD=
-ENV FUTU_ACCOUNT_PWD_MD5=
-ENV FUTU_OPEND_RSA_FILE_PATH=/.futu/futu.pem
-ENV FUTU_OPEND_IP=127.0.0.1
-ENV FUTU_OPEND_PORT=11111
-ENV FUTU_OPEND_TELNET_PORT=22222
-
-# Create non-root user and necessary directories
-RUN groupadd -r futu && useradd -r -g futu -m -d /home/futu futu && \
-    mkdir -p /.futu /bin && chown -R futu:futu /.futu /bin /home/futu
-
-COPY script/start.sh /bin/start.sh
-RUN chmod +x /bin/start.sh && chown futu:futu /bin/start.sh
-
-COPY FutuOpenD.xml /bin/FutuOpenD.xml
-RUN chown futu:futu /bin/FutuOpenD.xml
-
-# Switch to non-root user
-USER futu
-
-# Add healthcheck
-HEALTHCHECK --interval=30s --timeout=600s --start-period=180s --retries=3 \
-  CMD pgrep FutuOpenD || exit 1
-
-CMD ["/bin/start.sh"]
-
-# ------------------------------------------------------------
-# Final image selection based on BASE_IMG argument
-FROM final-ubuntu-image AS final-ubuntu-target
-FROM final-centos-image AS final-centos-target
-
-# Default to Ubuntu if BASE_IMG is not specified or invalid
-FROM final-ubuntu-target AS final
+ENTRYPOINT ["/usr/local/bin/entrypoint-opend.sh"]

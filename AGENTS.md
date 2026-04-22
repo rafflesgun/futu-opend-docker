@@ -1,88 +1,79 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-03-05T15:00:40Z
-**Commit:** 1895191
+**Generated:** 2026-04-22T00:00:00Z
+**Commit:** Task-7-worktree
 **Branch:** main
 
 ## OVERVIEW
 
-Docker containerization for Futu OpenD — a trading API gateway for Futu Securities. Multi-arch builds (Ubuntu/CentOS) with automated version tracking and CI/CD to GHCR.
+Docker containerization for `futu-opend-rs` and `futu-mcp` with Docker Compose examples, multi-arch image builds, and GHCR publishing workflows.
 
 ## STRUCTURE
 
 ```text
 .
-├── Dockerfile              # Multi-stage build (ubuntu/centos targets)
-├── docker-compose.yaml     # Local dev compose
-├── FutuOpenD.xml           # Config template (sed-replaced at runtime)
-├── opend_version.json      # Version tracking (auto-updated by CI)
+├── Dockerfile              # Multi-stage build for futu-opend-rs binaries
+├── docker-compose.yaml     # Local opend + MCP stack
+├── examples/               # Example TOML config, env file, and key material
+├── opend_version.json      # Pinned futu-opend-rs release metadata
 ├── script/
-│   ├── start.sh            # Entrypoint — replaces XML placeholders
-│   ├── download_futu_opend.sh  # Downloads FutuOpenD (3 retries, exponential backoff)
-│   ├── check_version.js    # Version scraper with retry, timeout, validation
-│   └── check_version.test.js  # Unit tests (node:test)
-└── .github/workflows/      # CI: publish, lint, version-check, pr-agent
+│   ├── entrypoint-opend.sh # Opend container entrypoint
+│   ├── entrypoint-mcp.sh   # MCP container entrypoint
+└── .github/workflows/      # CI: publish, lint, auto-merge
 ```
 
 ## WHERE TO LOOK
 
-| Task                   | Location                                  | Notes                                      |
-| ---------------------- | ----------------------------------------- | ------------------------------------------ |
-| Add build arg          | `Dockerfile` L9, L20, L31, L38            | `FUTU_OPEND_VER`                           |
-| Modify startup         | `script/start.sh`                         | XML sed replacement happens here           |
-| Change CI triggers     | `.github/workflows/publish.yml`           | Matrix: BASE_IMG × VERSION                 |
-| Update config template | `FutuOpenD.xml`                           | Placeholders: `###VAR###`                  |
-| Version detection      | `script/check_version.js`                 | Scraper with retry, timeout, validation    |
-| Run tests              | `script/check_version.test.js`            | `node --test script/check_version.test.js` |
-| Download manually      | `script/download_futu_opend.sh --retry 3` | Retry with exponential backoff             |
+| Task               | Location                                  | Notes                                      |
+| ------------------ | ----------------------------------------- | ------------------------------------------ |
+| Adjust image build | `Dockerfile`                              | `FUTU_OPEND_RS_VER`, multi-arch download   |
+| Modify startup     | `script/entrypoint-opend.sh`              | Starts `futu-opend` from TOML config       |
+| Start MCP service  | `script/entrypoint-mcp.sh`                | Starts `futu-mcp` from TOML config         |
+| Change CI          | `.github/workflows/publish.yml`           | Publish pipeline for container images      |
+| Compose examples   | `docker-compose.yaml`, `examples/*.toml`  | Local stack and mounted config             |
+| Lint hooks         | `.pre-commit-config.yaml`, `.github/workflows/lint.yml` | Local and CI lint entrypoints |
 
 ## CONVENTIONS
 
-- **Multi-stage Docker**: `final-ubuntu-target` / `final-centos-target` targets selected via `BASE_IMG` arg
+- **Multi-stage Docker**: Builder downloads release tarball, final image installs only runtime deps
 - **Non-root user**: All images run as `futu` user (created at build)
-- **Env var injection**: `FUTU_ACCOUNT_ID`, `FUTU_ACCOUNT_PWD`, `FUTU_OPEND_RSA_FILE_PATH`, `FUTU_OPEND_IP`, `FUTU_OPEND_PORT`
-- **Password hashing**: MD5 of password injected at runtime (L5 of start.sh)
-- **Version tracking**: `opend_version.json` updated by scheduled CI, triggers PR on change
+- **Compose-mounted config**: Runtime config comes from `examples/*.toml` and `examples/keys.json`
+- **Release pinning**: `opend_version.json` records the tracked upstream release used by automation and docs
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - **NEVER** run containers as root — `USER futu` enforced
-- **NEVER** hardcode credentials — use env vars or `.env` file
-- **NEVER** modify `FutuOpenD.xml` directly — it's a template, changes overwritten at runtime
-- **NEVER** skip RSA key — required for API encryption
+- **NEVER** hardcode secrets — mount config and key files instead
+- **NEVER** commit real key material or account credentials
+- **NEVER** remove the health dependency between `mcp` and `opend` without replacing readiness checks
 
 ## UNIQUE STYLES
 
-- **XML templating**: `sed -i` replaces `###PLACEHOLDER###` patterns in `FutuOpenD.xml` at container start
-- **Dual base images**: Ubuntu 16.04 and CentOS 7 supported via multi-stage Dockerfile
-- **Healthcheck**: `pgrep FutuOpenD` with 180s start period (slow startup expected)
-- **2FA flow**: User must `docker attach` and run `input_phone_verify_code -code=XXX`
+- **Config-first runtime**: TOML files are mounted into `/etc/futu-opend`
+- **Healthcheck**: Compose probes `http://127.0.0.1:22222/health` before starting `mcp`
+- **Shared logs/state**: Named volumes back `/var/lib/futu` and `/var/log/futu`
 
 ## COMMANDS
 
 ```bash
-# Build locally (Ubuntu)
-docker build -t futu-opend-docker --build-arg FUTU_OPEND_VER=9.3.5308 --build-arg BASE_IMG=ubuntu .
+# Build locally
+docker build --platform linux/arm64 -t futu-opend-rs:final .
 
-# Build locally (CentOS)
-docker build -t futu-opend-docker --build-arg FUTU_OPEND_VER=9.3.5308 --build-arg BASE_IMG=centos .
+# Prepare example env and render compose config
+cp examples/.env.example examples/.env
+docker compose config
 
-# Run with compose (requires .env)
+# Run with compose
 docker compose up -d
 
-# Attach for 2FA
-docker attach futu-opend
-input_phone_verify_code -code=XXXXXX
-
-# Check for new versions
-node script/check_version.js
+# Inspect logs
+docker compose logs --no-color opend mcp
 ```
 
 ## NOTES
 
-- **RSA key required**: Generate with `openssl genrsa -out futu.pem 1024`, mount to container
-- **Slow startup**: FutuOpenD takes 2-3 minutes to initialize; healthcheck has 180s grace period
-- **2FA required**: First run needs SMS code input via attached terminal
-- **Tests**: `node --test script/check_version.test.js` (uses built-in node:test)
-- **Download**: `script/download_futu_opend.sh --retry 3` (retry with exponential backoff)
+- **Example env file**: `examples/.env.example` can be copied to `examples/.env` for local compose flows
+- **Key material required**: `examples/keys.json` must exist for local startup
+- **Startup depends on valid upstream credentials and network access**
+- **Linting**: run `pre-commit run --all-files` when `pre-commit` is installed locally
 - **Disclaimer**: Not affiliated with Futu Securities

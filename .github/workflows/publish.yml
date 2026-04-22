@@ -24,63 +24,29 @@ jobs:
             code:
               - '!README.md'
               - '!LICENSE'
-              - '!.github/workflows/check-ver-update.yml'
               - '!.github/workflows/lint.yml'
 
-  extract-version:
+  build:
     needs: check-paths
     if: needs.check-paths.outputs.should-build == 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.result }}
-      beta_version: ${{ steps.beta_version.outputs.result }}
-      stable_version: ${{ steps.stable_version.outputs.result }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-      - uses: actions/github-script@v7
-        id: beta_version
-        with:
-          script: |
-            const config = require('./opend_version.json');
-            return config.betaVersion;
-          result-encoding: string
-      - uses: actions/github-script@v7
-        id: stable_version
-        with:
-          script: |
-            const config = require('./opend_version.json');
-            return config.stableVersion;
-          result-encoding: string
-      - id: set-matrix
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const betaVersion = "${{ steps.beta_version.outputs.result }}";
-            const versions = ["${{ steps.stable_version.outputs.result }}"];
-            if (betaVersion !== "null") {
-                versions.unshift(betaVersion);
-            }
-            return {
-                "BASE_IMG": ["ubuntu", "centos"],
-                "FUTU_OPEND_VER": versions
-            };
-
-  build:
     strategy:
-      matrix: ${{ fromJSON(needs.extract-version.outputs.matrix) }}
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [extract-version]
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}
-      BETA_VERSION: ${{ needs.extract-version.outputs.beta_version }}
-      STABLE_VERSION: ${{ needs.extract-version.outputs.stable_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Docker login
         uses: docker/login-action@v3
@@ -89,98 +55,73 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set tag suffix
-        id: tag_suffix
-        uses: actions/github-script@v7
-        with:
-          result-encoding: string
-          script: |
-            if ("${{ matrix.FUTU_OPEND_VER }}" === "${{ env.BETA_VERSION }}") {
-                return "beta";
-            } else {
-                return "stable";
-            }
+      - name: Set image tag
+        id: image
+        run: |
+          echo "tag=${IMAGE_NAME}:${GITHUB_SHA}-${{ matrix.arch }}" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           push: false
           load: true
-          target: final-${{ matrix.BASE_IMG }}-target
+          platforms: linux/${{ matrix.arch }}
           build-args: |
-            FUTU_OPEND_VER=${{ matrix.FUTU_OPEND_VER }}
-            BASE_IMG=${{ matrix.BASE_IMG }}
-          tags: |
-            ${{ env.IMAGE_NAME }}:${{ matrix.BASE_IMG }}-${{ matrix.FUTU_OPEND_VER }}
-            ${{ env.IMAGE_NAME }}:${{ matrix.BASE_IMG }}-${{ steps.tag_suffix.outputs.result }}
+            TARGETARCH=${{ matrix.arch }}
+          tags: ${{ steps.image.outputs.tag }}
 
       - name: Validate Docker image
         run: |
-          echo "=== Starting container for validation ==="
+          set -eu
+
+          image="${{ steps.image.outputs.tag }}"
+
+          docker run --rm --entrypoint /bin/sh "$image" -c '
+            command -v futu-opend
+            command -v futu-mcp
+            command -v futucli
+          '
+
+          docker network create futu-ci
+
+          cleanup() {
+            docker logs futu-opend-test 2>/dev/null || true
+            docker logs futu-mcp-test 2>/dev/null || true
+            docker rm -f futu-mcp-test futu-opend-test 2>/dev/null || true
+            docker network rm futu-ci 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
           docker run -d \
             --name futu-opend-test \
-            -e FUTU_ACCOUNT_ID="" \
-            -e FUTU_ACCOUNT_PWD="" \
-            ${{ env.IMAGE_NAME }}:${{ matrix.BASE_IMG }}-${{ matrix.FUTU_OPEND_VER }}
+            --network futu-ci \
+            -v "$PWD/examples/futu-opend.toml:/etc/futu-opend/futu-opend.toml:ro" \
+            -v "$PWD/examples/keys.json:/etc/futu-opend/keys.json:ro" \
+            "$image"
 
-          echo "Waiting for FutuOpenD to start (timeout: 60s)..."
-
-          # Wait for health check to initialize
-          timeout 60s sh -c '
-            until docker inspect --format="{{.State.Health.Status}}" futu-opend-test 2>/dev/null | grep -qE "(starting|healthy|unhealthy)"; do
-              echo "Waiting for health check to initialize..."
+          timeout 45s sh -c '
+            until docker exec futu-opend-test curl -fsS http://127.0.0.1:22222/health >/dev/null; do
               sleep 2
             done
           '
 
-          # Give process time to start
-          sleep 5
+          docker inspect --format='{{.State.Status}}' futu-opend-test | grep -qx running
 
-          # Check if process started (validates binary works)
-          echo "Checking if FutuOpenD process started..."
-          if timeout 10s sh -c 'until docker exec futu-opend-test pgrep FutuOpenD 2>/dev/null; do sleep 1; done'; then
-            echo "✓ FutuOpenD process started successfully"
-            PROCESS_STARTED=true
-          else
-            echo "⚠ FutuOpenD process did not start within timeout"
-            PROCESS_STARTED=false
-          fi
+          docker run -d \
+            --name futu-mcp-test \
+            --network futu-ci \
+            --entrypoint /usr/local/bin/entrypoint-mcp.sh \
+            -v "$PWD/examples/futu-mcp.toml:/etc/futu-opend/futu-mcp.toml:ro" \
+            -v "$PWD/examples/keys.json:/etc/futu-opend/keys.json:ro" \
+            "$image"
 
-          # Show logs for debugging
-          echo ""
-          echo "=== Container logs ==="
-          docker logs futu-opend-test
+          timeout 45s sh -c '
+            until docker exec futu-mcp-test curl -fsS -H "Accept: text/event-stream" http://127.0.0.1:38765/mcp >/dev/null; do
+              sleep 2
+            done
+          '
 
-          # Check exit code
-          EXIT_CODE=$(docker inspect --format="{{.State.ExitCode}}" futu-opend-test 2>/dev/null || echo "unknown")
-          echo ""
-          echo "=== Container exit code: $EXIT_CODE ==="
-
-          # Cleanup
-          echo ""
-          echo "Cleaning up test container..."
-          docker stop futu-opend-test 2>/dev/null || true
-          docker rm futu-opend-test 2>/dev/null || true
-
-          # Validation criteria for CI:
-          # - Exit code 0 (still running) or 14 (login failed - expected without credentials)
-          # - Process started at some point
-          # - Binary is executable
-          if [ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "14" ]; then
-            echo ""
-            echo "✅ Image validation PASSED"
-            echo "   - FutuOpenD binary: WORKING"
-            echo "   - Health check mechanism: WORKING"
-            echo "   - Exit code: $EXIT_CODE (expected for CI without credentials)"
-            exit 0
-          else
-            echo ""
-            echo "❌ Image validation FAILED"
-            echo "   - Unexpected exit code: $EXIT_CODE"
-            exit 1
-          fi
+          docker inspect --format='{{.State.Status}}' futu-mcp-test | grep -qx running
 
       - name: Push Docker image
-        run: |
-          docker push ${{ env.IMAGE_NAME }}:${{ matrix.BASE_IMG }}-${{ matrix.FUTU_OPEND_VER }}
-          docker push ${{ env.IMAGE_NAME }}:${{ matrix.BASE_IMG }}-${{ steps.tag_suffix.outputs.result }}
+        run: docker push '${{ steps.image.outputs.tag }}'

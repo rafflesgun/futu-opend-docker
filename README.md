@@ -1,261 +1,183 @@
-# Futu OpenD Docker
+# FUTU-OpenD-rs Docker Bundle
 
-[![Docker Pulls](https://img.shields.io/github/package-json/v/manhinhang/futu-opend-docker)](https://github.com/manhinhang/futu-opend-docker/packages)
-[![GitHub](https://img.shields.io/github/license/manhinhang/futu-opend-docker)](https://github.com/manhinhang/futu-opend-docker/blob/main/LICENSE)
+Personal Docker deployment for `FUTU-OpenD-rs` with native `arm64`
+and `amd64` builds, an HTTP MCP service, and repo-local nanobot
+assets.
 
-lightweight futu opend docker
+## What this repo provides
 
-## Pull the docker image from GitHub Container Registry
+- one native Docker image that bundles `futu-opend`, `futu-mcp`, and `futucli`
+- one compose stack with separate `opend` and `mcp` services
+- a `toml`-first runtime configuration workflow under `examples/`
+- repo-local nanobot MCP templates and skill assets under `nanobot/`
 
-```bash
-# default base image is ubuntu
-docker pull ghcr.io/manhinhang/futu-opend-docker:ubuntu-stable
-```
+## Supported architectures
 
-## container tags pattern
+- `linux/arm64`
+- `linux/amd64`
 
-| Base Image | Tags                   |
-| ---------- | ---------------------- |
-| ubuntu     | ubuntu-stable          |
-| ubuntu     | ubuntu-beta            |
-| ubuntu     | ubuntu-{opend_version} |
-| centos     | centos-stable          |
-| centos     | centos-beta            |
-| centos     | centos-{opend_version} |
+The image build downloads the matching upstream `FUTU-OpenD-rs`
+release for the target architecture and runs it natively. There is no
+translation layer in this bundle.
 
-## Create a container from the image and run it
+## Runtime model
 
-> Generate your own RSA key
->
-> ```bash
-> openssl genrsa -out futu.pem 1024
-> ```
+This repo packages the Rust-native `FUTU-OpenD-rs` runtime rather than
+the legacy desktop OpenD distribution.
 
-```bash
-docker run -it --name futu-opend-docker \
--e FUTU_ACCOUNT_ID=<your_account_id> \
--e FUTU_ACCOUNT_PWD=<your_password> \
--v $(pwd)/futu.pem:/.futu/futu.pem \
--p 11111:11111 \
--p 22222:22222 \
-ghcr.io/manhinhang/futu-opend-docker
-```
+- `opend` runs the trading gateway and exposes:
+  - native TCP on `11111`
+  - REST and health endpoints on `22222`
+  - gRPC on `33333`
+- `mcp` runs `futu-mcp` separately and connects to `opend:11111`
+- both services mount repo-local config files from `examples/`
+- persistent runtime state and logs live in the named volumes
+  `futu-state` and `futu-log`
 
-> **Port mappings**:
->
-> - `11111`: API port for FutuOpenD protocol
-> - `22222`: Telnet port for 2FA input (optional, but recommended for automation)
+The MCP service is published on `38765` and serves HTTP MCP requests at `/mcp`.
 
-### Input verification codes
+## Quick start
 
-FutuOpenD may require two types of verification:
+1. Edit `examples/futu-opend.toml` with your account, region, and
+   platform settings.
+2. Generate or rotate the plaintext bearer token you want MCP clients
+   to send, hash that token, and store the hash plus scopes in
+   `examples/keys.json`. The checked-in example token is
+   `fc_replace_me`.
+3. Copy `examples/.env.example` to `examples/.env` if you need to
+   recreate the default local bearer-token env file for compose.
+4. Adjust `examples/futu-mcp.toml` if you want to change the default
+   MCP HTTP listen address or audit log path.
+5. Run `docker compose up -d --build`.
+6. Point your MCP client at `http://<host>:38765/mcp` and send the
+   plaintext token in `Authorization: Bearer <token>`.
 
-1. **SMS verification code** - sent to your phone
-2. **Picture CAPTCHA** - downloaded to container
+The compose stack loads `examples/.env` for the local MCP bearer token.
+Keep that plaintext token aligned with the matching `sha256:` entry in
+`examples/keys.json`.
 
-You can input verification codes using either `docker attach` or telnet:
+## Configuration workflow
 
-#### Method 1: Using docker attach
+The runtime is configured with mounted files, not generated config or a
+startup-only environment variable shim.
 
-1. Attach to futu opend container
+### `examples/futu-opend.toml`
 
-```bash
-docker attach futu-opend
-```
+Primary gateway configuration for `futu-opend`.
 
-1. Input verification code based on the type:
+- login identity and password or password MD5
+- market region such as `cn`, `hk`, or `us`
+- platform such as `futunn` or `moomoo`
+- listen addresses and ports for TCP, REST, and gRPC
+- logging and language settings
 
-**For SMS verification code:**
+Mounted in compose as `/etc/futu-opend/futu-opend.toml`.
 
-```bash
-input_phone_verify_code -code=<SMS_CODE>
-```
+### `examples/futu-mcp.toml`
 
-**For picture CAPTCHA:**
+Configuration for the standalone MCP service.
 
-First, copy the CAPTCHA image from container:
+- upstream gateway target, defaulting to `opend:11111`
+- `keys.json` path for MCP auth and capability mapping
+- bearer token env supplied by compose from `examples/.env`
+- HTTP listen address, defaulting to `:38765`
+- audit log path
 
-```bash
-docker cp futu-opend:/home/futu/.com.futunn.FutuOpenD/F3CNN/PicVerifyCode.png ./PicVerifyCode.png
-```
+Mounted in compose as `/etc/futu-opend/futu-mcp.toml`.
 
-Then view the image and input the code:
+### `examples/keys.json`
 
-```bash
-input_pic_verify_code -code=<CAPTCHA_CODE>
-```
+Hashed key records and scope mapping for `futu-mcp`.
 
-#### Method 2: Using telnet (recommended for automation)
+Clients send a plaintext bearer token. `futu-mcp` hashes the presented
+token and compares it with the stored `hash` entries in this file.
 
-Connect to the FutuOpenD telnet port (22222) and send the command:
+Compose mounts the file into both containers, but the active auth check
+is part of the MCP service flow rather than the `opend` gateway config.
 
-**For SMS verification code:**
+## Compose usage
 
-```bash
-# Interactive
-telnet localhost 22222
-input_phone_verify_code -code=<SMS_CODE>
-
-# One-liner
-echo "input_phone_verify_code -code=<SMS_CODE>" | telnet localhost 22222
-```
-
-**For picture CAPTCHA:**
-
-First, extract the CAPTCHA image:
+Start or rebuild the local bundle:
 
 ```bash
-docker cp futu-opend:/home/futu/.com.futunn.FutuOpenD/F3CNN/PicVerifyCode.png ./PicVerifyCode.png
+docker compose up -d --build
 ```
 
-Then input the code via telnet:
+Stop the stack:
 
 ```bash
-echo "input_pic_verify_code -code=<CAPTCHA_CODE>" | telnet localhost 22222
+docker compose down
 ```
 
-**Automation script example:**
+Check service status:
 
 ```bash
-#!/bin/bash
-# Auto-input SMS verification code
-{
-  sleep 2
-  echo "input_phone_verify_code -code=$1"
-  sleep 1
-} | telnet localhost 22222
+docker compose ps
 ```
 
-```bash
-#!/bin/bash
-# Auto-input picture CAPTCHA
-# First extract and display the image, then input the code
-docker cp futu-opend:/home/futu/.com.futunn.FutuOpenD/F3CNN/PicVerifyCode.png /tmp/PicVerifyCode.png
-# Display image (choose your preferred viewer)
-open /tmp/PicVerifyCode.png  # macOS
-# xdg-open /tmp/PicVerifyCode.png  # Linux
-# start /tmp/PicVerifyCode.png  # Windows
+The default stack exposes these ports:
 
-read -p "Enter CAPTCHA code: " captcha_code
-{
-  sleep 2
-  echo "input_pic_verify_code -code=$captcha_code"
-  sleep 1
-} | telnet localhost 22222
-```
+- `11111` for the native OpenD TCP gateway
+- `22222` for the OpenD REST API and health endpoint
+- `33333` for the OpenD gRPC endpoint
+- `38765` for the MCP HTTP server
 
-## Run in docker compose
+## MCP usage for nanobot
 
-Edit `.env`
+Nanobot can talk to the MCP service over HTTP.
 
-| Environment Variable   | Description                                                           |
-| ---------------------- | --------------------------------------------------------------------- |
-| FUTU_ACCOUNT_ID        | Futu account ID                                                       |
-| FUTU_ACCOUNT_PWD       | Futu account password (ignored if FUTU_ACCOUNT_PWD_MD5 is set)        |
-| FUTU_ACCOUNT_PWD_MD5   | Futu account password MD5 hash (takes priority over FUTU_ACCOUNT_PWD) |
-| FUTU_OPEND_IP          | Futu OpenD IP in container                                            |
-| FUTU_OPEND_PORT        | Futu OpenD API Port in container                                      |
-| FUTU_OPEND_TELNET_PORT | Futu OpenD Telnet Port (default: 22222)                               |
+- endpoint: `http://<host>:38765/mcp`
+- header: `Authorization: Bearer <plaintext token>`
 
-```bash
-docker compose up -d
-```
+Bearer-token flow:
 
-### Healthcheck
+- the client keeps and sends the plaintext token
+- `examples/keys.json` stores the corresponding `sha256:` hash and
+  allowed scopes
+- `futu-mcp` checks the presented token against those stored hashes
 
-The container includes a healthcheck that monitors the FutuOpenD process:
+See:
 
-| Setting      | Value             | Description                        |
-| ------------ | ----------------- | ---------------------------------- |
-| test         | `pgrep FutuOpenD` | Check FutuOpenD process is running |
-| interval     | 30s               | Check every 30 seconds             |
-| timeout      | 600s              | Timeout for each check             |
-| retries      | 3                 | Mark unhealthy after 3 failures    |
-| start_period | 180s              | Grace period for container startup |
+- `nanobot/README.md` for the integration notes
+- `nanobot/mcp-http-example.json` for an MCP client template
+- `nanobot/skills/futu-market-ops.md` for the repo-local
+  market/account workflow prompt
 
-Check container health status:
+Start with read-only scopes such as `qot:read` and `acc:read`, then
+separate any simulated or live trading access into distinct keys.
 
-```bash
-docker ps --format "table {{.Names}}\t{{.Status}}"
-```
+## Repo layout
 
-Then enter verification codes when prompted:
+Important runtime and integration assets live here:
 
-**Using docker attach:**
+- `Dockerfile` builds the native multi-arch `FUTU-OpenD-rs` image
+- `docker-compose.yaml` defines the local `opend` and `mcp` stack
+- `examples/futu-opend.toml` is the gateway config template
+- `examples/futu-mcp.toml` is the MCP config template
+- `examples/keys.json` stores hashed MCP bearer-token entries and scopes
+- `examples/.env.example` is the template for the local MCP bearer-token env file
+- `nanobot/README.md` documents nanobot MCP setup
+- `nanobot/mcp-http-example.json` contains a ready-to-edit MCP HTTP
+  client example
+- `nanobot/skills/futu-market-ops.md` contains the repo-local nanobot
+  skill asset
 
-```bash
-docker attach futu-opend
+## Migration note
 
-# For SMS verification
-input_phone_verify_code -code=<SMS_CODE>
+Older revisions of this repo targeted the legacy upstream OpenD
+runtime. Current `main` is centered on `FUTU-OpenD-rs` only.
 
-# For picture CAPTCHA (extract image first)
-docker cp futu-opend:/home/futu/.com.futunn.FutuOpenD/F3CNN/PicVerifyCode.png ./PicVerifyCode.png
-input_pic_verify_code -code=<CAPTCHA_CODE>
-```
+If you are migrating from an older checkout, update your workflow to use:
 
-**Using telnet** (see [Input verification codes](#input-verification-codes) section for full details):
+- mounted `toml` config files under `examples/`
+- `examples/keys.json` for MCP auth
+- the two-service compose stack with `opend` and `mcp`
 
-```bash
-# For SMS verification
-echo "input_phone_verify_code -code=<SMS_CODE>" | telnet localhost 22222
-
-# For picture CAPTCHA
-docker cp futu-opend:/home/futu/.com.futunn.FutuOpenD/F3CNN/PicVerifyCode.png ./PicVerifyCode.png
-echo "input_pic_verify_code -code=<CAPTCHA_CODE>" | telnet localhost 22222
-```
-
-## Build locally
-
-> **Note**: Ubuntu builds require version 9.4.x or later with Ubuntu 18.04 base image. Ubuntu 16.04 builds are no longer provided by Futu.
-
-- Use ubuntu as base image
-
-```bash
-docker build -t futu-opend-docker --build-arg FUTU_OPEND_VER=10.0.6008 --build-arg BASE_IMG=ubuntu .
-```
-
-- Use centos as base image
-
-```bash
-docker build -t futu-opend-docker --build-arg FUTU_OPEND_VER=10.0.6008 --build-arg BASE_IMG=centos .
-```
-
-## Troubleshooting
-
-### Download failures
-
-If you encounter download failures during build:
-
-1. **Network issues**: The download script includes automatic retry logic (3 attempts)
-2. **Version compatibility**: Ensure you're using a version that has Ubuntu 18.04 builds (9.4.x or later)
-3. **Check available versions**: Visit [Futu OpenD download page](https://www.futunn.com/en/download/OpenAPI)
-
-### Container startup issues
-
-If the container fails to start:
-
-1. **RSA key**: Ensure `futu.pem` exists and is properly mounted at `/.futu/futu.pem`
-2. **Environment variables**: Verify `FUTU_ACCOUNT_ID` and either `FUTU_ACCOUNT_PWD` or `FUTU_ACCOUNT_PWD_MD5` are set
-3. **Verification required**: First run may require verification codes
-
-### Verification codes
-
-FutuOpenD may prompt for two types of verification:
-
-1. **SMS verification code** (`input_phone_verify_code`)
-   - Sent to your registered phone number
-   - Input via docker attach or telnet
-
-2. **Picture CAPTCHA** (`input_pic_verify_code`)
-   - Downloaded to `/home/futu/.com.futunn.FutuOpenD/F3CNN/PicVerifyCode.png` inside container
-   - Extract with: `docker cp futu-opend:/home/futu/.com.futunn.FutuOpenD/F3CNN/PicVerifyCode.png ./PicVerifyCode.png`
-   - View the image and input the code
-
-**Tip**: Use telnet method for automation - see [Input verification codes](#input-verification-codes) section for details.
+If an older checkout mentions compatibility shims, generated config,
+interactive verification steps, injected key files, or env-only login
+startup, ignore that guidance and follow the file-mounted rs-native
+workflow here instead.
 
 ## Disclaimer
 
 This project is not affiliated with [Futu Securities International (Hong Kong) Limited](https://www.futuhk.com/).
-
-Good luck and enjoy.
