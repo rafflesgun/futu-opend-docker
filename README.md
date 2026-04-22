@@ -9,7 +9,7 @@ assets.
 - one native Docker image that bundles `futu-opend`, `futu-mcp`, and `futucli`
 - one compose stack with separate `opend` and `mcp` services
 - a `toml`-first runtime configuration workflow under `examples/`
-- repo-local nanobot MCP templates and skill assets under `nanobot/`
+- repo-local nanobot MCP templates and the compliant skill package under `skills/`
 
 ## Supported architectures
 
@@ -139,8 +139,8 @@ See:
 
 - `nanobot/README.md` for the integration notes
 - `nanobot/mcp-http-example.json` for an MCP client template
-- `nanobot/skills/futu-market-ops.md` for the repo-local
-  market/account workflow prompt
+- `skills/moomooapi/SKILL.md` for the compliant market/trading
+  skill package
 
 Start with read-only scopes such as `qot:read` and `acc:read`, then
 separate any simulated or live trading access into distinct keys.
@@ -157,8 +157,8 @@ Important runtime and integration assets live here:
 - `nanobot/README.md` documents nanobot MCP setup
 - `nanobot/mcp-http-example.json` contains a ready-to-edit MCP HTTP
   client example
-- `nanobot/skills/futu-market-ops.md` contains the repo-local nanobot
-  skill asset
+- `skills/moomooapi/SKILL.md` contains the compliant market/trading
+  skill package
 
 ## Migration note
 
