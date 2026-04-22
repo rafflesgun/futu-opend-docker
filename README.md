@@ -102,6 +102,23 @@ Start or rebuild the local bundle:
 docker compose up -d --build
 ```
 
+Build and push a multi-arch image:
+
+```bash
+docker buildx create --name multiarch --driver docker-container --use
+docker buildx inspect --bootstrap
+docker buildx build --platform linux/amd64,linux/arm64 --push -t rafflesg/futo-opend:latest .
+```
+
+If `docker buildx build` fails with `Multi-platform build is not supported
+for the docker driver`, the active builder is using the plain `docker`
+driver. Switch to a container-backed builder first:
+
+```bash
+docker buildx use multiarch
+docker buildx inspect --bootstrap
+```
+
 Stop the stack:
 
 ```bash
