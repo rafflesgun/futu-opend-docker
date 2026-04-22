@@ -91,8 +91,9 @@ Hashed key records and scope mapping for `futu-mcp`.
 Clients send a plaintext bearer token. `futu-mcp` hashes the presented
 token and compares it with the stored `hash` entries in this file.
 
-Compose mounts the file into both containers, but the active auth check
-is part of the MCP service flow rather than the `opend` gateway config.
+Compose mounts the file into both containers. The active auth check is
+part of the MCP service flow, and the current `opend` entrypoint also
+expects `/etc/futu-opend/keys.json` to exist before startup.
 
 ## Compose usage
 
@@ -102,12 +103,40 @@ Start or rebuild the local bundle:
 docker compose up -d --build
 ```
 
+If you want OpenD to reuse a fixed device ID, set
+`FUTU_OPEND_DEVICE_ID` when you launch the container. This is optional;
+leave it unset to keep the current default startup behavior. The
+entrypoint maps it to `--device-id`.
+
+For a direct `docker run` flow:
+
+```bash
+docker run --rm \
+  -e FUTU_OPEND_DEVICE_ID=your-stable-device-id \
+  -v "$PWD/examples/futu-opend.toml:/etc/futu-opend/futu-opend.toml:ro" \
+  -v "$PWD/examples/keys.json:/etc/futu-opend/keys.json:ro" \
+  -p 11111:11111 \
+  -p 22222:22222 \
+  -p 33333:33333 \
+  futu-opend-rs:local
+```
+
+For Compose, add an optional environment entry under `opend`:
+
+```yaml
+services:
+  opend:
+    environment:
+      FUTU_OPEND_DEVICE_ID: your-stable-device-id
+```
+
 Build and push a multi-arch image:
 
 ```bash
 docker buildx create --name multiarch --driver docker-container --use
 docker buildx inspect --bootstrap
-docker buildx build --platform linux/amd64,linux/arm64 --push -t rafflesg/futo-opend:latest .
+docker buildx build --platform linux/amd64,linux/arm64 --push \
+  -t rafflesg/futo-opend:latest .
 ```
 
 If `docker buildx build` fails with `Multi-platform build is not supported
