@@ -4,9 +4,9 @@ set -eu
 OPEND_CONFIG_PATH=/etc/futu-opend/futu-opend.toml
 MCP_CONFIG_PATH=/etc/futu-opend/futu-mcp.toml
 KEYS_PATH=/etc/futu-opend/keys.json
-OPEND_HEALTH_URL=http://127.0.0.1:22222/health
-OPEND_HEALTH_RETRIES=30
-OPEND_HEALTH_DELAY=1
+OPEND_HEALTH_URL=http://127.0.0.1:55555/health
+OPEND_HEALTH_RETRIES=15
+OPEND_HEALTH_DELAY=5
 
 validate_opend_inputs() {
   if [ ! -f "$OPEND_CONFIG_PATH" ]; then
