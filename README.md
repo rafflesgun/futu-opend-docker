@@ -230,6 +230,39 @@ The default stack exposes these ports:
 - `33333` for the OpenD gRPC endpoint
 - `38765` for the MCP HTTP server
 
+## Python sample usage
+
+You can test the deployed OpenD container from another machine, such as
+your development laptop, by connecting to the native TCP gateway on
+port `11111` with the upstream Python client.
+
+Create a local virtual environment and install the sample dependency:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r samples/python/requirements.txt
+```
+
+Run the smoke test against the Pi4 host:
+
+```bash
+python samples/python/quote_smoke_test.py \
+  --host 192.168.1.50 \
+  --code HK.00700
+```
+
+Optional flags:
+
+- `--port` defaults to `11111`
+
+Notes:
+
+- the container must already be running and reachable from your laptop
+- OpenD must be logged in and ready to serve quote requests
+- the symbol you pass to `--code` must be valid for your account's
+  available market data access
+
 ## MCP usage for nanobot
 
 Nanobot can talk to the MCP service over HTTP.
