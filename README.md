@@ -191,8 +191,9 @@ If you want the newest upstream Linux tarball at build time, opt in with
 `latest`:
 
 ```bash
-docker build --build-arg FUTU_OPEND_RS_VER=latest .
+docker build --no-cache --build-arg FUTU_OPEND_RS_VER=latest .
 docker buildx build --platform linux/amd64,linux/arm64 \
+  --no-cache \
   --build-arg FUTU_OPEND_RS_VER=latest .
 ```
 
@@ -201,6 +202,10 @@ When `FUTU_OPEND_RS_VER=latest`, the build helper fetches
 from the `二进制下载` table for the target architecture, downloads the
 matching `.tar.gz` plus `.sha256`, verifies the checksum, and then
 extracts that release into the image build stage.
+
+Docker does not know that `latest` depends on live upstream page content,
+so a cached build can reuse the previous resolved release. Use `--no-cache`
+when you want Docker to re-check upstream and pull a newer latest version.
 
 If `docker buildx build` fails with `Multi-platform build is not supported
 for the docker driver`, the active builder is using the plain `docker`

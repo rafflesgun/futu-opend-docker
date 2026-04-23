@@ -63,7 +63,7 @@ run_mcp() {
 run_setup() {
   validate_opend_inputs
 
-  set -- /usr/local/bin/futu-opend --config "$OPEND_CONFIG_PATH"
+  set -- /usr/local/bin/futu-opend --config "$OPEND_CONFIG_PATH" --rest-keys-file "$KEYS_PATH" --grpc-keys-file "$KEYS_PATH" --ws-keys-file "$KEYS_PATH"
 
   if [ -n "${FUTU_OPEND_DEVICE_ID:-}" ]; then
     set -- "$@" --device-id "$FUTU_OPEND_DEVICE_ID"
