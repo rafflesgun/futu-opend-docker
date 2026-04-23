@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-ARG FUTU_OPEND_RS_VER=1.4.62
+ARG FUTU_OPEND_RS_VER=1.4.73
+#ARG FUTU_OPEND_RS_VER=latest
 
 FROM debian:bookworm-slim AS build
 
@@ -13,18 +14,14 @@ RUN apt-get update && \
 
 WORKDIR /tmp
 
-RUN case "$TARGETARCH" in \
-      arm64) RS_ARCH="linux-aarch64" ;; \
-      amd64) RS_ARCH="linux-x86_64" ;; \
-      *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
-    esac && \
-    FILE="futu-opend-rs-${FUTU_OPEND_RS_VER}-${RS_ARCH}.tar.gz" && \
-    curl -fL -o "$FILE" "https://futuapi.com/releases/rs-v${FUTU_OPEND_RS_VER}/$FILE" && \
-    tar -xzf "$FILE"
+COPY --chmod=0755 script/download-futu-opend-rs.sh /usr/local/bin/download-futu-opend-rs.sh
+
+RUN /usr/local/bin/download-futu-opend-rs.sh
 
 FROM debian:trixie-slim AS final
 
-ARG FUTU_OPEND_RS_VER=1.4.62
+ARG FUTU_OPEND_RS_VER=1.4.73
+#ARG FUTU_OPEND_RS_VER=latest
 
 RUN apt-get update && \
     apt-get install --no-install-recommends -y ca-certificates curl libdbus-1-3 && \

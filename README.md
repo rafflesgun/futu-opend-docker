@@ -179,6 +179,29 @@ docker buildx build --platform linux/amd64,linux/arm64 --push \
   -t rafflesg/futo-opend:latest .
 ```
 
+The Dockerfile stays pinned by default through `FUTU_OPEND_RS_VER`, so a
+plain build remains reproducible:
+
+```bash
+docker build .
+docker build --build-arg FUTU_OPEND_RS_VER=1.4.70 .
+```
+
+If you want the newest upstream Linux tarball at build time, opt in with
+`latest`:
+
+```bash
+docker build --build-arg FUTU_OPEND_RS_VER=latest .
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --build-arg FUTU_OPEND_RS_VER=latest .
+```
+
+When `FUTU_OPEND_RS_VER=latest`, the build helper fetches
+`https://www.futuapi.com/download/`, reads the actual Linux tarball name
+from the `二进制下载` table for the target architecture, downloads the
+matching `.tar.gz` plus `.sha256`, verifies the checksum, and then
+extracts that release into the image build stage.
+
 If `docker buildx build` fails with `Multi-platform build is not supported
 for the docker driver`, the active builder is using the plain `docker`
 driver. Switch to a container-backed builder first:
