@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "moomoo": {
+      "type": "streamableHttp",
+      "url": "http://127.0.0.1:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer fc_replace_me",
+        "Host": "127.0.0.1" 
+      }
+    }
+  }
+}
