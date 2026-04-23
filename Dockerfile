@@ -43,3 +43,4 @@ RUN chmod 0755 /usr/local/bin/futu-opend /usr/local/bin/futu-mcp /usr/local/bin/
 WORKDIR /root
 
 ENTRYPOINT ["/usr/local/bin/entrypoint-all.sh"]
+CMD ["both"]

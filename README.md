@@ -104,6 +104,15 @@ container:
 docker compose up -d --build
 ```
 
+The image entrypoint is mode-aware and defaults to `both` through Docker
+`CMD`. These mode values are supported:
+
+- `both`: start OpenD and MCP together
+- `opend`: start only OpenD
+- `mcp`: start only MCP
+- `setup`: print the full OpenD `--setup-only` command and keep the
+  container alive for SMS verification flow
+
 For a direct `docker run` flow, mount both TOML files plus `keys.json`:
 
 ```bash
@@ -122,6 +131,30 @@ docker run --rm \
 
 This default startup path launches `futu-opend` first, waits for
 `http://127.0.0.1:22222/health`, then starts `futu-mcp`.
+
+You can override the default mode by passing a command argument:
+
+```bash
+docker run --rm futu-opend-rs:local
+docker run --rm futu-opend-rs:local opend
+docker run --rm futu-opend-rs:local mcp
+docker run --rm futu-opend-rs:local setup
+```
+
+In real usage, mount the required files for each mode. For example, setup
+mode needs the OpenD config and `keys.json`:
+
+```bash
+docker run --rm \
+  -e FUTU_OPEND_DEVICE_ID=your-stable-device-id \
+  -v "$PWD/examples/futu-opend.toml:/etc/futu-opend/futu-opend.toml:ro" \
+  -v "$PWD/examples/keys.json:/etc/futu-opend/keys.json:ro" \
+  futu-opend-rs:local setup
+```
+
+Setup mode does not start normal OpenD or MCP services. It prints the
+exact OpenD command with `--setup-only` to the container logs and keeps
+the container alive so you can complete SMS verification manually.
 
 If you want OpenD to reuse a fixed device ID, set
 `FUTU_OPEND_DEVICE_ID` when you launch the container. This is optional;
